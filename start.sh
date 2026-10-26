@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # Clear the terminal before showing the startup message.
 clear 2>/dev/null || printf '\033[2J\033[H'
 printf '\n========================================\n'
-printf '          SoyieSec starting...\n'
+printf '          Recon starting...\n'
 printf '     Authorized security testing only\n'
 printf '========================================\n\n'
 
