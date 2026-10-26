@@ -1,0 +1,2 @@
+# SoyieSec currently uses only Python 3 standard-library modules.
+# No third-party Python packages are required.
