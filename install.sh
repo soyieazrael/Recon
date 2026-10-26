@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 printf '\n========================================\n'
-printf '        SoyieSec Setup Installer\n'
+printf '        Recon Setup Installer\n'
 printf '========================================\n\n'
 
 if ! command -v python3 >/dev/null 2>&1; then
