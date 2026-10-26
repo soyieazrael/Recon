@@ -1,6 +1,6 @@
-# SoyieSec
+# Recon
 
-**SoyieSec** is a small, menu-driven Python network and web reconnaissance utility intended for learning, authorized penetration testing, and security checks on systems you own or have explicit permission to assess.
+**Recon** is a small, menu-driven Python network and web reconnaissance utility intended for learning, authorized penetration testing, and security checks on systems you own or have explicit permission to assess.
 
 > **Authorization notice:** Only scan systems, networks, and websites that you own or are explicitly authorized to test. Some checks generate network traffic, and packet capture may expose sensitive traffic on your own network. Follow applicable laws, engagement rules, and your organization's testing scope.
 
@@ -166,7 +166,7 @@ SoyieSec/
 ├── start.sh           # Clears terminal and starts with sudo
 └── README.md          # Documentation and installation guide
 ```
-
+### Created By Soyie Azrael
 ## Disclaimer
 
 SoyieSec is provided for education and authorized security testing. You are responsible for obtaining permission, respecting scope, protecting collected data, and complying with applicable laws. The author and contributors are not responsible for misuse or damage caused by this software.
