@@ -54,11 +54,11 @@ sudo apt install -y traceroute dnsutils
 
 ### 2. Get the repository
 
-Replace `<YOUR-REPOSITORY-URL>` with the URL of your GitHub repository:
+Replace `https://github.com/soyieazrael/Recon.git` with the URL of your GitHub repository:
 
 ```bash
-git clone <YOUR-REPOSITORY-URL>
-cd <YOUR-REPOSITORY-DIRECTORY>
+git clone https://github.com/soyieazrael/Recon.git
+cd Recon
 ```
 
 Alternatively, download the repository ZIP from GitHub, extract it, and open a terminal in the extracted directory.
@@ -159,7 +159,7 @@ Check the domain spelling, DNS connectivity, VPN settings, and whether the targe
 ## Project files
 
 ```text
-SoyieSec/
+Recon/
 ├── soyie.py          # Main menu-driven tool
 ├── requirements.txt  # Python dependency list (stdlib only at present)
 ├── install.sh        # Setup helper
