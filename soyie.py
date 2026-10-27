@@ -14,12 +14,11 @@ from urllib.parse import urlparse, urlencode
 # ---------- ascii art banner ----------
 
 BANNER = r"""
- ███████╗ ██████╗ ██╗   ██╗██╗███████╗
- ██╔════╝██╔═══██╗╚██╗ ██╔╝██║██╔════╝
- ███████╗██║   ██║ ╚████╔╝ ██║█████╗  
- ╚════██║██║   ██║  ╚██╔╝  ██║██╔══╝  
- ███████║╚██████╔╝   ██║   ██║███████╗
- ╚══════╝ ╚═════╝    ╚═╝   ╚═╝╚══════╝
+ ____  _____ ____ ___  _   _
+|  _ \| ____/ ___/ _ \| \ | |
+| |_) |  _|| |  | | | |  \| |
+|  _ <| |__| |__| |_| | |\  |
+|_| \_\_____\____\___/|_| \_|
 """
 
 USER_AGENTS = [
@@ -285,15 +284,142 @@ def run_subdomain_enum(host):
             fqdn, ip = future.result()
             if ip: print(f"    [+] Found: {fqdn:<30} -> {ip}")
 
+class _LoginFormParser(__import__("html.parser", fromlist=["HTMLParser"]).HTMLParser):
+    """Collect basic HTML form details without submitting credentials."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.forms = []
+        self._current = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag.lower() == "form":
+            self._current = {
+                "action": attrs.get("action", ""),
+                "method": attrs.get("method", "get").lower(),
+                "inputs": [],
+            }
+            self.forms.append(self._current)
+        elif tag.lower() == "input" and self._current is not None:
+            self._current["inputs"].append({
+                "type": attrs.get("type", "text").lower(),
+                "name": attrs.get("name", ""),
+                "autocomplete": attrs.get("autocomplete", ""),
+            })
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "form":
+            self._current = None
+
+
 def run_login_brute(host):
-    print(f"\n[--- HTTP Login Form Brute-Forcer ---]")
-    target_path = input("Enter login path (e.g. /login.php): ").strip()
-    username = input("Enter target username: ").strip()
-    wordlist = input("Enter wordlist file path: ").strip()
-    if not os.path.exists(wordlist):
-        print("[!] Wordlist not found.")
+    """Inspect a login form and optionally audit a password wordlist offline.
+
+    This function never submits usernames/passwords or attempts authentication.
+    """
+    print("\\n[--- Recon Login Form Inspector & Offline Wordlist Audit ---]")
+    target_path = input("Enter login path (e.g. /login.php): ").strip() or "/"
+    if "\\r" in target_path or "\\n" in target_path:
+        print("[!] Invalid path.")
         return
-    print(f"[*] Brute-forcing target {host}...")
+    if not target_path.startswith("/"):
+        target_path = "/" + target_path
+
+    scheme = input("Protocol [https/http] (default https): ").strip().lower() or "https"
+    if scheme not in ("https", "http"):
+        print("[!] Choose either https or http.")
+        return
+    if scheme == "http":
+        print("[!] HTTP is unencrypted. Use it only for an authorized lab/test environment.")
+
+    # Keep the request scoped to the host selected in Recon's main menu.
+    url = f"{scheme}://{host}{target_path}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Recon-Security-Inspector/1.0"},
+        method="GET",
+    )
+    print(f"[*] Inspecting login page: {url}")
+    try:
+        with urllib.request.urlopen(req, timeout=6) as response:
+            status = response.status
+            final_url = response.geturl()
+            headers = response.headers
+            content_type = headers.get("Content-Type", "")
+            body = response.read(1_000_000).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        print(f"[!] Server returned HTTP {exc.code} for {url}")
+        return
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        print(f"[!] Could not fetch login page: {exc}")
+        return
+
+    print(f"[+] HTTP status : {status}")
+    print(f"[+] Final URL   : {final_url}")
+    print(f"[+] Content-Type: {content_type or 'Not provided'}")
+    for header in ("Strict-Transport-Security", "Content-Security-Policy",
+                   "X-Content-Type-Options", "Referrer-Policy"):
+        print(f"    {header}: {'Present' if headers.get(header) else 'Missing'}")
+
+    parser = _LoginFormParser()
+    parser.feed(body)
+    if not parser.forms:
+        print("[-] No HTML forms found in the first 1 MB of response content.")
+        print("[*] The page may render its form with JavaScript or require a different route.")
+    else:
+        print(f"[+] Found {len(parser.forms)} form(s):")
+        for index, form in enumerate(parser.forms, start=1):
+            password_fields = [field for field in form["inputs"] if field["type"] == "password"]
+            hidden_fields = [field for field in form["inputs"] if field["type"] == "hidden"]
+            csrf_hints = [field for field in hidden_fields
+                          if any(token in field["name"].lower()
+                                 for token in ("csrf", "token", "authenticity"))]
+            username_hints = [field for field in form["inputs"]
+                              if field["type"] in ("text", "email")
+                              or any(token in field["name"].lower()
+                                     for token in ("user", "email", "login"))]
+            print(f"\\n    Form {index}")
+            print(f"      Method          : {form['method'].upper()}")
+            print(f"      Action          : {form['action'] or '(same page)'}")
+            print(f"      Input count     : {len(form['inputs'])}")
+            print(f"      Username hints  : {len(username_hints)}")
+            print(f"      Password fields : {len(password_fields)}")
+            print(f"      Hidden fields   : {len(hidden_fields)}")
+            print(f"      CSRF token hint : {'Possible token field found' if csrf_hints else 'No obvious token field detected'}")
+            for field in form["inputs"]:
+                print(f"        - type={field['type']}, name={field['name'] or '(unnamed)'}, "
+                      f"autocomplete={field['autocomplete'] or '(unspecified)'}")
+
+    print("\\n[*] Optional: inspect a password wordlist locally (no network requests).")
+    audit = input("Analyze a .txt password wordlist for basic quality statistics? (y/n): ").strip().lower()
+    if audit not in ("y", "yes"):
+        print("[!] No credentials were submitted; inspection complete.")
+        return
+
+    wordlist = input("Enter path to password .txt file: ").strip()
+    if not wordlist.lower().endswith(".txt") or not os.path.isfile(wordlist):
+        print("[!] Please provide an existing .txt file.")
+        return
+    try:
+        with open(wordlist, "r", encoding="utf-8", errors="ignore") as file:
+            entries = [line.rstrip("\\r\\n") for line in file]
+        nonempty = [entry for entry in entries if entry]
+        unique = set(nonempty)
+        lengths = [len(entry) for entry in nonempty]
+        print("\\n[--- Offline Wordlist Statistics ---]")
+        print(f"    Total lines       : {len(entries)}")
+        print(f"    Non-empty entries : {len(nonempty)}")
+        print(f"    Unique entries    : {len(unique)}")
+        print(f"    Duplicate entries : {len(nonempty) - len(unique)}")
+        if lengths:
+            print(f"    Shortest entry    : {min(lengths)} characters")
+            print(f"    Longest entry     : {max(lengths)} characters")
+            print(f"    Under 8 chars     : {sum(1 for length in lengths if length < 8)}")
+            print(f"    8-11 chars        : {sum(1 for length in lengths if 8 <= length <= 11)}")
+            print(f"    12+ chars         : {sum(1 for length in lengths if length >= 12)}")
+        print("[!] This is an offline file audit only. Recon does not try these entries against a login.")
+    except OSError as exc:
+        print(f"[!] Could not read wordlist: {exc}")
 
 def run_packet_sniffer():
     print(f"\n[--- Lightweight Raw Socket Packet Sniffer ---]")
@@ -309,7 +435,7 @@ def run_packet_sniffer():
             print(f"    [+] Captured frame from '{addr[0]}' | Size: {len(packet)} bytes")
         s.close()
     except PermissionError:
-        print("    [-] Permission Denied! Run with: sudo python3 soyie.py")
+        print("    [-] Permission Denied! Run with: sudo python3 recon.py")
     except Exception as e:
         print(f"    [-] Sniffer error: {e}")
 
@@ -380,7 +506,8 @@ def run_axfr_check(host):
 def main():
     print(BANNER)
     print("========================================================================")
-    print("  SOYIE Penetration Framework v4.0 Created by: SOYIE AZRAEL")
+    print("  RECON | Network Reconnaissance & Security Assessment Toolkit")
+    print("  Version 1.0 | Authorized testing only")
     print("========================================================================")
 
     while True:
@@ -389,7 +516,7 @@ def main():
         print("  2) Port Scan by IP Address        |  11) HTTP Methods & CORS Checker")
         print("  3) Standard Directory Enum        |  12) Robots.txt & Sitemap Parser")
         print("  4) Network Mapping (DNS/Route)    |  13) Subdomain Enumerator")
-        print("  5) SSL/TLS Certificate Audit      |  14) HTTP Login Brute-Forcer")
+        print("  5) SSL/TLS Certificate Audit      |  14) Login Form Inspector")
         print("  6) IP Intelligence & ISP Lookup   |  15) Lightweight Packet Sniffer")
         print("  7) OSINT: Harvest Emails/Phones   |  16) Custom Wordlist Fuzzer")
         print("  8) Web Vulnerability Scan         |  17) Cookie Security Analyzer")
@@ -439,7 +566,7 @@ def main():
             print("[!] Invalid choice. Please select 1-18.")
 
         if input("\nDo you want to run another check? (y/n): ").strip().lower() not in ("y", "yes"):
-            print("[*] Exiting soyie framework. Stay safe in your lab!")
+            print("[*] Exiting Recon. Stay safe in your lab!")
             break
 
 if __name__ == "__main__":
